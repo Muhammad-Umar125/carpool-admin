@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { sendOTPEmail, verifyOTP } from '@/utils/emailService';
 
 interface OTPVerificationProps {
   email: string;
@@ -14,43 +15,35 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isSending, setIsSending] = useState(true);
+  const [remainingAttempts, setRemainingAttempts] = useState(5);
 
-  // For demo purposes, the OTP is stored in session storage
-  // In production, this would be generated and sent via email from your backend
-  const storedOTP = typeof window !== 'undefined' ? sessionStorage.getItem('otp') : null;
-
+  // Auto-send OTP when component mounts
   useEffect(() => {
-    // Auto-send OTP when component mounts
-    sendOTP();
-  }, []);
+    const sendInitialOTP = async () => {
+      setIsSending(true);
+      const result = await sendOTPEmail({ email });
+      
+      if (result.success) {
+        setSuccessMessage('OTP sent to your email!');
+        setResendCooldown(60);
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        setError(result.error || 'Failed to send OTP');
+      }
+      setIsSending(false);
+    };
 
+    sendInitialOTP();
+  }, [email]);
+
+  // Cooldown timer
   useEffect(() => {
     if (resendCooldown > 0) {
       const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
       return () => clearTimeout(timer);
     }
   }, [resendCooldown]);
-
-  const sendOTP = () => {
-    // Generate a random 6-digit OTP
-    const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // In production, send this OTP via email using your backend API
-    // For demo, we'll store it in sessionStorage and show it in console
-    sessionStorage.setItem('otp', generatedOTP);
-    
-    console.log('=================================');
-    console.log('OTP sent to:', email);
-    console.log('Your OTP is:', generatedOTP);
-    console.log('=================================');
-    
-    // Show success message
-    setSuccessMessage('OTP sent to your email!');
-    setTimeout(() => setSuccessMessage(''), 3000);
-    
-    // Set cooldown for resend button
-    setResendCooldown(60);
-  };
 
   const handleOtpChange = (index: number, value: string) => {
     // Only allow digits
@@ -100,16 +93,14 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
     setError('');
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Verify OTP with backend
+      const result = await verifyOTP(email, enteredOTP);
 
-      // Verify OTP
-      if (enteredOTP === storedOTP) {
-        // Clear OTP from storage
-        sessionStorage.removeItem('otp');
+      if (result.success) {
         onVerifySuccess();
       } else {
-        setError('Invalid OTP. Please try again.');
+        setError(result.error || 'Invalid OTP. Please try again.');
+        setRemainingAttempts(result.remainingAttempts || 5);
         setOtp(['', '', '', '', '', '']);
         document.getElementById('otp-0')?.focus();
       }
@@ -120,12 +111,24 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
     }
   };
 
-  const handleResendOTP = () => {
+  const handleResendOTP = async () => {
     if (resendCooldown > 0) return;
     
     setOtp(['', '', '', '', '', '']);
     setError('');
-    sendOTP();
+    setIsSending(true);
+
+    const result = await sendOTPEmail({ email });
+    
+    if (result.success) {
+      setSuccessMessage('New OTP sent to your email!');
+      setResendCooldown(60);
+      setRemainingAttempts(5); // Reset attempts
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } else {
+      setError(result.error || 'Failed to resend OTP');
+    }
+    setIsSending(false);
   };
 
   return (
@@ -136,6 +139,18 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
           We've sent a verification code to<br />
           <span className="font-semibold text-gray-800">{email}</span>
         </p>
+
+        {isSending && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-600 px-4 py-2 rounded-md text-sm mb-4 text-center">
+            <span className="flex items-center justify-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Sending OTP...
+            </span>
+          </div>
+        )}
 
         {successMessage && (
           <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-2 rounded-md text-sm mb-4 text-center">
@@ -158,7 +173,7 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
                 onChange={(e) => handleOtpChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 className="w-12 h-12 text-center text-xl font-semibold border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none transition-colors text-gray-800"
-                disabled={loading}
+                disabled={loading || isSending}
               />
             ))}
           </div>
@@ -172,7 +187,7 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
 
         <button
           onClick={handleVerify}
-          disabled={loading || otp.join('').length !== 6}
+          disabled={loading || otp.join('').length !== 6 || isSending}
           className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium mb-3"
         >
           {loading ? (
@@ -188,10 +203,16 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
           )}
         </button>
 
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 text-xs">
+          <span className="text-gray-500">
+            Attempts remaining: <span className="font-semibold">{remainingAttempts}</span>
+          </span>
+        </div>
+
+        <div className="flex justify-between items-center">
           <button
             onClick={handleResendOTP}
-            disabled={resendCooldown > 0}
+            disabled={resendCooldown > 0 || isSending}
             className="text-sm text-blue-600 hover:text-blue-700 disabled:text-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
           >
             {resendCooldown > 0 ? `Resend OTP in ${resendCooldown}s` : 'Resend OTP'}
@@ -199,7 +220,7 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
           
           <button
             onClick={onCancel}
-            disabled={loading}
+            disabled={loading || isSending}
             className="text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors"
           >
             Cancel
@@ -207,7 +228,7 @@ export default function OTPVerification({ email, onVerifySuccess, onCancel }: OT
         </div>
 
         <div className="text-xs text-gray-400 text-center mt-4">
-          🔒 For demo: Check browser console for OTP
+          🔒 Check your email for the verification code
         </div>
       </div>
     </div>

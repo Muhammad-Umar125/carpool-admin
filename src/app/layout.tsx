@@ -20,6 +20,7 @@ export default function RootLayout({
         {/* Header shown on ALL pages including login */}
         <header className="bg-blue-600 text-white p-4">
           <h1 className="text-xl font-semibold">Carpool Admin Portal</h1>
+          (console.log("Admin Portal Loaded"));
         </header>
         <main className="flex-grow">{children}</main>
       </body>
