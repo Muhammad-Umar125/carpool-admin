@@ -2,17 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import OTPVerification from './OTPVerification';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showOTP, setShowOTP] = useState(false);
+  const [verifiedUser, setVerifiedUser] = useState<any>(null);
   const router = useRouter();
 
   // Demo users with different roles for testing
   const demoUsers = [
-    { email: 'superadmin@carpool.com', password: 'admin123', role: 'super_admin', name: 'Super Admin' },
+    { email: 'umerq0875@gmail.com', password: 'admin123', role: 'super_admin', name: 'Super Admin' },
     { email: 'feedback@carpool.com', password: 'admin123', role: 'feedback_manager', name: 'Feedback Manager' },
     { email: 'driverauth@carpool.com', password: 'admin123', role: 'driver_authenticator', name: 'Driver Authenticator' },
     { email: 'support@carpool.com', password: 'admin123', role: 'support_agent', name: 'Support Agent' },
@@ -31,15 +34,10 @@ export default function LoginForm() {
       const user = demoUsers.find(u => u.email === email && u.password === password);
       
       if (user) {
-        // Store user info (in real app, this would be a JWT token from your backend)
-        localStorage.setItem('adminUser', JSON.stringify({
-          email: user.email,
-          role: user.role,
-          name: user.name,
-          loginTime: new Date().toISOString()
-        }));
-        
-        router.push('/dashboard');
+        // Store user info temporarily for OTP verification
+        setVerifiedUser(user);
+        // Show OTP verification modal
+        setShowOTP(true);
       } else {
         setError('Invalid email or password');
       }
@@ -48,6 +46,26 @@ export default function LoginForm() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOTPVerifySuccess = () => {
+    if (verifiedUser) {
+      // Store user info in localStorage after successful OTP verification
+      localStorage.setItem('adminUser', JSON.stringify({
+        email: verifiedUser.email,
+        role: verifiedUser.role,
+        name: verifiedUser.name,
+        loginTime: new Date().toISOString()
+      }));
+      
+      router.push('/dashboard');
+    }
+  };
+
+  const handleOTPCancel = () => {
+    setShowOTP(false);
+    setVerifiedUser(null);
+    setPassword('');
   };
 
   // Demo credentials helper (remove in production)
@@ -160,6 +178,15 @@ export default function LoginForm() {
       <div className="mt-4 text-xs text-gray-400 text-center">
         🔒 Secure admin portal for authorized personnel only
       </div>
+
+      {/* OTP Verification Modal */}
+      {showOTP && (
+        <OTPVerification
+          email={email}
+          onVerifySuccess={handleOTPVerifySuccess}
+          onCancel={handleOTPCancel}
+        />
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ export default function DashboardPage() {
     totalUsers: 1200,
     activeDrivers: 350,
     activeCars: 280,
-  };
+  };  
 
   const cards = [
     {
